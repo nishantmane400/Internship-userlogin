@@ -1,143 +1,120 @@
 import streamlit as st
-from PIL import Image
-import base64
-import io
 import json
 import os
+from datetime import datetime
 
-# ---------------- PAGE CONFIG ----------------
-st.set_page_config(
-    page_title="Nishant - Login Form",
-    page_icon="👤",
-    layout="centered"
-)
+# 1. PAGE CONFIGURATION
+st.set_page_config(page_title="CMS Portal", page_icon="🔐", layout="centered")
 
-# ---------------- DATABASE ----------------
+# --- DATABASE LOGIC (STORES FULL USER DETAILS) ---
 DB_FILE = "users_db.json"
 
-def load_users():
+def load_db():
     if os.path.exists(DB_FILE):
         with open(DB_FILE, "r") as f:
             return json.load(f)
-    return {"admin": "admin123"}  # default user
+    # Initial Default Admin as per your documentation
+    return {
+        "admin@system.com": {
+            "full_name": "System Admin",
+            "password": "admin123",
+            "role": "Admin",
+            "status": "active",
+            "created_at": str(datetime.now())
+        }
+    }
 
-def save_user(username, password):
-    users = load_users()
-    users[username] = password
+def save_user(email, name, password, role):
+    db = load_db()
+    db[email] = {
+        "full_name": name,
+        "password": password,
+        "role": role,
+        "status": "active",
+        "created_at": str(datetime.now())
+    }
     with open(DB_FILE, "w") as f:
-        json.dump(users, f)
+        json.dump(db, f, indent=4)
 
-users = load_users()
+# --- SESSION STATE INITIALIZATION ---
+if 'logged_in' not in st.session_state:
+    st.session_state['logged_in'] = False
+if 'user_data' not in st.session_state:
+    st.session_state['user_data'] = None
 
-# ---------------- IMAGE HELPER ----------------
-def get_base64_image(img_path):
-    try:
-        img = Image.open(img_path)
-        buffered = io.BytesIO()
-        img.save(buffered, format="JPEG")
-        return base64.b64encode(buffered.getvalue()).decode()
-    except:
-        return ""
-
-# ---------------- CSS THEME ----------------
+# --- UI THEMING ---
 st.markdown("""
-<style>
-/* Animated Gradient Background */
-.stApp {
-    background: linear-gradient(-45deg, #0f0c29, #302b63, #24243e);
-    background-size: 400% 400%;
-    animation: gradient 15s ease infinite;
-}
+    <style>
+    .main { background-color: #0e1117; }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #3b82f6; color: white; }
+    h1, h2, h3 { color: #3b82f6 !important; }
+    </style>
+    """, unsafe_allow_html=True)
 
-@keyframes gradient {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-
-/* Sidebar */
-[data-testid="stSidebar"] {
-    background-color: #1a1a2e !important;
-}
-
-/* Headers */
-h2, h3 {
-    color: #e0e0ff !important;
-    font-family: 'Segoe UI', sans-serif;
-}
-
-/* Inputs */
-input {
-    background-color: #1f1f3a !important;
-    color: white !important;
-}
-
-/* Buttons */
-.stButton > button {
-    background: linear-gradient(90deg, #6a11cb, #2575fc);
-    color: white !important;
-    width: 100%;
-    border-radius: 8px;
-    border: none;
-    height: 45px;
-    font-size: 16px;
-}
-
-/* Success / Error */
-div[data-baseweb="notification"] {
-    border-radius: 8px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ---------------- SIDEBAR ----------------
+# 2. SIDEBAR NAVIGATION
 with st.sidebar:
-    pfp_data = get_base64_image("pfp.jpg")
-    if pfp_data:
-        st.markdown(f"""
-            <div style="text-align:center;">
-                <img src="data:image/jpeg;base64,{pfp_data}"
-                     style="width:120px;height:120px;border-radius:15px;
-                     border:2px solid white;margin-bottom:15px;">
-            </div>
-        """, unsafe_allow_html=True)
+    st.title("🛡️ CMS AUTH")
+    if not st.session_state['logged_in']:
+        choice = st.radio("MENU", ["Login", "Register"])
+    else:
+        st.write(f"**Logged in as:** {st.session_state['user_data']['full_name']}")
+        st.write(f"**Role:** {st.session_state['user_data']['role']}")
+        if st.button("Logout"):
+            st.session_state['logged_in'] = False
+            st.session_state['user_data'] = None
+            st.rerun()
+        choice = "Dashboard"
 
-    st.markdown("<h3 style='text-align:center;'>Nishant</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center;color:#bbb;'>Secure Login System</p>", unsafe_allow_html=True)
-    st.markdown("---")
+# 3. MAIN INTERFACE LOGIC
+db = load_db()
 
-    mode = st.radio("CHOOSE ACTION", ["LOGIN", "REGISTER"])
-    st.markdown("---")
-    st.caption("Permanent Database Enabled")
+if not st.session_state['logged_in']:
+    if choice == "Login":
+        st.header("Admin or User Login")
+        email = st.text_input("Email Address")
+        password = st.text_input("Password", type="password")
+        
+        if st.button("SIGN IN"):
+            if email in db and db[email]['password'] == password:
+                st.session_state['logged_in'] = True
+                st.session_state['user_data'] = db[email]
+                st.rerun()
+            else:
+                st.error("Authentication failed. Please check credentials.")
 
-# ---------------- MAIN CONTENT ----------------
-if mode == "LOGIN":
-    st.markdown("## Account Login")
+    elif choice == "Register":
+        st.header("User Registration")
+        new_name = st.text_input("Full Name")
+        new_email = st.text_input("Email (Unique ID)")
+        new_pass = st.text_input("Password", type="password")
+        # Role selection as per your "Functionalites to be Designed" image
+        new_role = st.selectbox("Assign Role", ["User", "Salesperson", "Admin"])
+        
+        if st.button("CREATE ACCOUNT"):
+            if not new_name or not new_email or not new_pass:
+                st.error("All fields are mandatory.")
+            elif new_email in db:
+                st.warning("User already exists with this email.")
+            else:
+                save_user(new_email, new_name, new_pass, new_role)
+                st.success("Registration Successful! You can now login.")
 
-    user_input = st.text_input("USERNAME")
-    pass_input = st.text_input("PASSWORD", type="password")
+else:
+    # 4. DASHBOARD (Role-Based Access)
+    user = st.session_state['user_data']
+    st.header(f"Welcome to Dashboard, {user['full_name']}!")
+    
+    # Visualizing Role-Based Access as per your requirement
+    if user['role'] == "Admin":
+        st.info("🔓 **ADMIN PRIVILEGES GRANTED**: You can manage users and invoices.")
+        st.write("### System Statistics")
+        st.columns(3)[0].metric("Total Users", len(db))
+    
+    elif user['role'] == "Salesperson":
+        st.warning("🔒 **RESTRICTED ACCESS**: You can only access Sales & Leads features.")
+        
+    else:
+        st.success("👤 **STANDARD USER**: You can view your personal profile and data.")
 
-    if st.button("SIGN IN"):
-        if user_input in users and users[user_input] == pass_input:
-            st.success(f"Welcome back, {user_input}!")
-            st.balloons()
-        else:
-            st.error("Invalid Username or Password")
-
-elif mode == "REGISTER":
-    st.markdown("## Create Account")
-
-    new_user = st.text_input("NEW USERNAME")
-    new_pass = st.text_input("NEW PASSWORD", type="password")
-    confirm_pass = st.text_input("CONFIRM PASSWORD", type="password")
-
-    if st.button("REGISTER"):
-        if new_user in users:
-            st.warning("Username already taken.")
-        elif new_pass != confirm_pass:
-            st.error("Passwords do not match.")
-        elif new_user and new_pass:
-            save_user(new_user, new_pass)
-            st.success("Registration Successful! You can now login.")
-        else:
-            st.error("Fields cannot be empty.")
+    st.write("---")
+    st.json(user) # Displaying the session data based on the User Table schema
